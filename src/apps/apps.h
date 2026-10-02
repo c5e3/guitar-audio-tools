@@ -13,4 +13,3 @@ App *metronomeApp();
 App *intonationApp();
 App *chordsApp();
 App *scalesApp();
-App *recorderApp();

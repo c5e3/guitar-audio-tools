@@ -1,14 +1,10 @@
-// Chords: a chord dictionary. Type a chord name (am7, f#m, bb, c9) and its
-// shape is drawn on a horizontal fretboard (high E string at the top, as the
-// guitar is seen when playing), with the fingers and the notes of the chord.
+// Chords: a chord dictionary. Choose a root and a chord type and its shape is
+// drawn on a horizontal fretboard (high E string at the top, as the guitar is
+// seen when playing), with the fingers and the notes of the chord.
 //
-// Typing: letters are added to the name while they can continue it (slowly
-// too: "c" "#" "a" "d" "d" "9" = C#add9). A note letter (a...g) that cannot
-// continue it starts a new chord: after "am7", "d" shows D. Enter clears the
-// name - needed only when a letter could continue it: C, then A ("ca" can be
-// the start of "cadd9"), or A, then B ("ab" is A flat).
-// Keys: , / other shape of the chord, Del deletes the last letter.
-// No timing rule: looking for shift + 3 (#) easily takes a few seconds.
+// Buttons: M5 moves between the three fields ROOT -> TYPE -> SHAPE (the field
+// being changed is yellow), PWR / B change it: previous / next root (C C# D Eb
+// ... B), chord type (major, m, 7, maj7 ...) or shape of the chord.
 // The microphone is not used.
 #include <cstring>
 #include "apps.h"
@@ -19,7 +15,6 @@
 
 namespace {
 
-const int MAX_TEXT = 8;
 const int MAX_SHAPES = 6;
 
 // the fretboard
@@ -30,7 +25,12 @@ const int STRING_TOP = 48;         // the high E string
 const int STRING_GAP = 13;
 const char *STRING_LABELS = "EADGBe";
 
-bool isNoteLetter(char ch) { return ch >= 'a' && ch <= 'g'; }
+// the 12 roots, spelled as they are usually written: {letter (0 = C), pitch}
+const dsp::SpelledNote ROOTS[12] = {{0, 0}, {0, 1}, {1, 2}, {2, 3}, {2, 4}, {3, 5},
+                                    {3, 6}, {4, 7}, {5, 8}, {5, 9}, {6, 10}, {6, 11}};
+
+enum Field { ROOT, TYPE, SHAPE, FIELDS };
+const char *FIELD_NAMES[FIELDS] = {"ROOT", "TYPE", "SHAPE"};
 
 class ChordsApp : public App {
  public:
@@ -40,78 +40,61 @@ class ChordsApp : public App {
   void enter() override {
     // the last chord: letter * 10000 + pitch * 100 + type
     int saved = settings::getInt("ch_last", 5 * 10000 + 9 * 100 + 4);   // Am7
-    dsp::Chord chord = {{saved / 10000 % 7, saved / 100 % 100 % 12}, saved % 100 % dsp::CHORD_TYPE_COUNT};
-    dsp::chordName(chord, text_);
+    root_ = saved / 100 % 100 % 12;                    // ROOTS[i].pitch == i
+    type_ = saved % 100 % dsp::CHORD_TYPE_COUNT;
+    field_ = ROOT;
     update();
-    fresh_ = true;                   // the first letter starts a new chord
   }
 
   void exit() override {
-    if (valid_) settings::putInt("ch_last", chord_.root.letter * 10000 + chord_.root.pitch * 100 + chord_.type);
+    settings::putInt("ch_last", chord_.root.letter * 10000 + chord_.root.pitch * 100 + chord_.type);
   }
 
   void process(const int16_t *, size_t) override {}
 
   int help(const ui::HelpItem *&items) const override {
     static const ui::HelpItem HELP[] = {
-        {nullptr, "type a chord: am7  f#m  bb  c9"},
+        {"M5", "next field: root, type,"},
+        {"", "shape (yellow = active)"},
+        {"PWR/B", "change the active field"},
         {nullptr, "types: m 7 maj7 m7 sus2 sus4"},
         {nullptr, "       dim aug 6 9 add9 5"},
-        {", /", "other shape of the chord"},
-        {"Del", "delete the last letter"},
-        {"Enter", "clear, type a new chord"},
         {nullptr, "orange = root, number = finger"},
+        {nullptr, "green bar = barre, x = muted"},
     };
     items = HELP;
     return sizeof(HELP) / sizeof(HELP[0]);
   }
 
   void onKey(const Key &key) override {
-    if (key.enter) {
-      text_[0] = 0;
-      update();
-    }
-    if (key.del) {
-      size_t length = strlen(text_);
-      if (length > 0) text_[length - 1] = 0;
-      update();
-    }
-    if (key.ch == ',' && shapeCount_ > 0) shape_ = (shape_ + shapeCount_ - 1) % shapeCount_;
-    if (key.ch == '/' && shapeCount_ > 0) shape_ = (shape_ + 1) % shapeCount_;
-    if (key.ch && key.ch != ',' && key.ch != '/') type(key.ch);
+    if (key.enter) field_ = (field_ + 1) % FIELDS;
+    int step = key.ch == '/' ? 1 : key.ch == ',' ? -1 : 0;
+    if (!step) return;
+    if (field_ == ROOT) root_ = (root_ + 12 + step) % 12;
+    if (field_ == TYPE) type_ = (type_ + dsp::CHORD_TYPE_COUNT + step) % dsp::CHORD_TYPE_COUNT;
+    if (field_ == SHAPE && shapeCount_ > 0) shape_ = (shape_ + shapeCount_ + step) % shapeCount_;
+    if (field_ != SHAPE) update();
   }
 
   void draw(M5Canvas &c) override {
-    char position[8] = "";
-    if (valid_ && shapeCount_ > 1) snprintf(position, sizeof(position), "%d/%d", shape_ + 1, shapeCount_);
-    ui::header("Chords", position);
+    char right[20];
+    if (shapeCount_ > 1) snprintf(right, sizeof(right), "%s  %d/%d", FIELD_NAMES[field_], shape_ + 1, shapeCount_);
+    else snprintf(right, sizeof(right), "%s", FIELD_NAMES[field_]);
+    ui::header("Chords", right);
 
-    // the name: as typed while it is not complete
+    // the name: root and type, the field being changed in yellow
+    char rootName[4];
+    dsp::noteName(chord_.root, rootName);
+    const char *suffix = dsp::CHORD_TYPES[chord_.type].suffix;
     c.setTextSize(3);
     c.setCursor(4, 16);
-    if (valid_) {
-      char name[12];
-      dsp::chordName(chord_, name);
-      c.setTextColor(WHITE);
-      c.print(name);
-    } else {
-      c.setTextColor(invalid_ ? RED : YELLOW);
-      c.print(pretty_);
-      c.print("_");
-      c.setTextSize(1);
-      c.setTextColor(WHITE);
-      c.setCursor(4, 44);
-      c.print(invalid_ ? "unknown chord - Del to fix" : text_[0] ? "Enter: start again" : "type the chord name...");
-    }
-    if (!valid_) {
-      ui::footerHelp();
-      return;
-    }
+    c.setTextColor(field_ == ROOT ? YELLOW : WHITE);
+    c.print(rootName);
+    c.setTextColor(field_ == TYPE ? YELLOW : WHITE);
+    c.print(suffix[0] ? suffix : field_ == TYPE ? "maj" : "");
+    int x = c.getCursorX() + 10;
 
     // its notes, next to the name
-    char name[12];
-    dsp::chordName(chord_, name);
-    int x = 4 + c.textWidth(name) + 10;
     c.setTextSize(2);
     dsp::ChordTone tones[6];
     int count = dsp::chordTones(chord_, tones, 6);
@@ -129,35 +112,8 @@ class ChordsApp : public App {
   }
 
  private:
-  // adds a typed character to the name, or starts a new name with it
-  void type(char ch) {
-    bool fresh = fresh_;
-    fresh_ = false;
-    size_t length = strlen(text_);
-    char longer[MAX_TEXT + 2];
-    snprintf(longer, sizeof(longer), "%s%c", text_, ch);
-    dsp::Chord unused;
-    bool continues = length < (size_t)MAX_TEXT &&
-                     dsp::parseChord(longer, unused) != dsp::ParseResult::Invalid;
-    if (isNoteLetter(ch) && (fresh || !continues)) {
-      text_[0] = ch;                 // a new chord
-      text_[1] = 0;
-    } else if (continues) {
-      strcpy(text_, longer);
-    } else {
-      return;                        // a character that does not fit: ignored
-    }
-    update();
-  }
-
   void update() {
-    dsp::Chord chord;
-    dsp::ParseResult result = dsp::parseChord(text_, chord);
-    valid_ = result == dsp::ParseResult::Chord;
-    invalid_ = result == dsp::ParseResult::Invalid;
-    strcpy(pretty_, text_);
-    if (pretty_[0]) pretty_[0] = (char)toupper(pretty_[0]);
-    if (!valid_) return;
+    dsp::Chord chord = {ROOTS[root_], type_};
     bool changed = chord.root.pitch != chord_.root.pitch || chord.type != chord_.type;
     chord_ = chord;
     shapeCount_ = dsp::chordVoicings(chord_, shapes_, MAX_SHAPES);
@@ -238,13 +194,10 @@ class ChordsApp : public App {
 
   static int fretX(int fret, int first) { return NUT_X + (fret - first) * FRET_WIDTH + FRET_WIDTH / 2; }
 
-  char text_[MAX_TEXT + 1] = "";
-  char pretty_[MAX_TEXT + 1] = "";
-  bool valid_ = false, invalid_ = false;
-  dsp::Chord chord_ = {{0, 0}, 0};
+  int root_ = 9, type_ = 0, field_ = ROOT;
+  dsp::Chord chord_ = {{0, 0}, -1};     // -1: update() always sees a change first
   dsp::Voicing shapes_[MAX_SHAPES];
   int shapeCount_ = 0, shape_ = 0;
-  bool fresh_ = false;
 };
 
 ChordsApp instance;

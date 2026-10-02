@@ -9,12 +9,12 @@
 // The last second before the strum is kept as "background": steady tones in
 // the room that were already there are not taken for strings.
 //
-// Calibration (key c): the low strings read flat in a strum compared with the
+// Calibration (menu): the low strings read flat in a strum compared with the
 // single-string tuner (see dsp::DEFAULT_CALIBRATION). A default correction
 // measured on the author's guitar is used; for another guitar or new strings,
-// tune every string with the tuner, press c and strum 3 times: the average
-// reading of each string becomes its correction (saved; Enter in the
-// calibration screen restores the default).
+// tune every string with the tuner, choose Calibrate in the menu and strum 3
+// times: the average reading of each string becomes its correction (saved;
+// "Default calibration" in the menu restores the default).
 //
 // Display: one column per string (E A D G B E). The marker shows the deviation:
 // up = sharp (too high), down = flat, green centre = within 3 cents. More than
@@ -28,7 +28,6 @@
 #include "level.h"
 #include "notes.h"
 #include "strum_tuner.h"
-#include "../hw/es8311.h"
 #include "../services/audio_in.h"
 #include "../services/settings.h"
 #include "../services/ui.h"
@@ -114,25 +113,39 @@ class StrumTunerApp : public App {
         {nullptr, "marker up: sharp, down: flat"},
         {nullptr, "arrow: yellow 10-50 c, red >50"},
         {nullptr, "?: string not heard"},
-        {"; .", "microphone gain + / -"},
-        {"Enter", "clear the result"},
-        {"c", "calibrate to your guitar"},
+        {"M5", "clear the result"},
+        {"menu", "mic gain, calibrate to"},
+        {"", "your guitar"},
     };
     items = HELP;
     return sizeof(HELP) / sizeof(HELP[0]);
   }
 
+  int menu(const MenuItem *&items) const override {
+    static const MenuItem MENU[] = {
+        {"Mic gain +", ';', true},
+        {"Mic gain -", '.', true},
+        {"Calibrate (3 strums)", 'c', false},
+        {"Default calibration", 'd', false},
+    };
+    items = MENU;
+    return sizeof(MENU) / sizeof(MENU[0]);
+  }
+
   void onKey(const Key &key) override {
+    if (key.ch == 'd') {
+      restoreDefaultCalibration();
+      return;
+    }
     if (calibrating_) {
-      if (key.ch == 'c') calibrating_ = false;
-      if (key.enter) restoreDefaultCalibration();
+      if (key.ch == 'c' || key.enter) calibrating_ = false;
       return;
     }
     if (key.ch == 'c') startCalibration();
     if (key.ch == ';' || key.ch == '.') {
-      es8311::setPgaGain(es8311::pgaGain() + (key.ch == ';' ? 3 : -3));
-      settings::putInt("g_poly", es8311::pgaGain());
-      ui::flashGain(es8311::pgaGain());
+      audio_in::setGain(audio_in::gain() + (key.ch == ';' ? 3 : -3));
+      settings::putInt("g_poly", audio_in::gain());
+      ui::flashGain(audio_in::gain());
     }
     if (key.enter) {
       haveResult_ = false;
@@ -350,7 +363,7 @@ class StrumTunerApp : public App {
     c.setTextColor(WHITE);
     c.setCursor(6, 108);
     c.print(custom_ ? "now: your calibration" : "now: default calibration");
-    ui::footer("c: cancel   Enter: default values");
+    ui::footer("M5: cancel   menu: default values");
   }
 
   // Development aid: prints the analysed block (4 kHz) so it can be replayed

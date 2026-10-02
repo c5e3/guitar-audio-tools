@@ -118,16 +118,6 @@ static void iconScales(M5Canvas &c, int x, int y) {
     }
 }
 
-static void iconRecorder(M5Canvas &c, int x, int y) {
-  // record button
-  c.drawRoundRect(x - 28, y - 26, 57, 53, 8, WHITE);
-  c.fillCircle(x, y - 4, 14, RED);
-  c.setTextSize(1);
-  c.setTextColor(WHITE);
-  c.setCursor(x - 8, y + 15);
-  c.print("REC");
-}
-
 static void iconMicTest(M5Canvas &c, int x, int y) {
   // waveform
   int prevY = y;
@@ -152,9 +142,8 @@ static Entry entries[] = {
     {"Strum tuner", "all strings at once", iconStrumTuner, strumTunerApp()},
     {"Metronome", "click, accents, tap", iconMetronome, metronomeApp()},
     {"BPM", "tempo: listen or tap", iconBpm, bpmApp()},
-    {"Chords", "chord shapes: type a name", iconChords, chordsApp()},
+    {"Chords", "chord shapes on the fretboard", iconChords, chordsApp()},
     {"Scales", "scales on the fretboard", iconScales, scalesApp()},
-    {"Recorder", "WAV on the SD card", iconRecorder, recorderApp()},
     {"Intonation", "guitar setup, fret 12", iconIntonation, intonationApp()},
     {"Spectrum", "music analyser bars", iconSpectrum, spectrumApp()},
     {"Decibel meter", "sound level in dB", iconDecibel, decibelMeterApp()},
@@ -167,16 +156,6 @@ static int selected = 0;
 // The last opened app is saved by its title, not its position: the order of
 // the list can change without opening a different app after an update.
 void begin() {
-  // before 1.0.0-beta.1 the position was saved ("last_app"), in this order
-  static const char *const OLD_ORDER[] = {"Decibel meter", "Guitar tuner", "Strum tuner", "Spectrum",
-                                          "BPM", "Metronome", "Intonation", "Chords", "Scales",
-                                          "Recorder", "Mic test"};
-  if (settings::has("last_app")) {
-    int old = settings::getInt("last_app", 0);
-    if (old >= 0 && old < (int)(sizeof(OLD_ORDER) / sizeof(OLD_ORDER[0])))
-      settings::putString("last_title", OLD_ORDER[old]);
-    settings::remove("last_app");
-  }
   char title[24];
   settings::getString("last_title", title, sizeof(title), entries[0].title);
   for (int i = 0; i < COUNT; i++)
@@ -211,16 +190,16 @@ void draw() {
   c.setTextSize(1);
   c.setTextColor(YELLOW);
   c.setCursor(3, ui::FOOTER_Y);
-  c.print(", / browse   Enter open   h help");
+  c.print("PWR/B browse  M5 open  hold M5 menu");
 }
 
 static const ui::HelpItem HELP[] = {
-    {", /", "previous / next app"},
-    {"Enter", "open the app"},
-    {"Esc", "back here from an app"},
-    {"h", "help (in every app)"},
-    {nullptr, "the last opened app is shown"},
-    {nullptr, "after power-on"},
+    {"PWR/B", "previous / next app"},
+    {"M5", "open the app"},
+    {"hold M5", "menu: help, power off"},
+    {"hold PWR", "back here from an app"},
+    {nullptr, "in apps: M5 = main action,"},
+    {nullptr, "PWR/B = less / more"},
     {nullptr, "version " FIRMWARE_VERSION},
 };
 

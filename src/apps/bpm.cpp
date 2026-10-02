@@ -7,14 +7,14 @@
 //       the same tempo). A new tempo is shown when it lasts 1.5 s (3 readings
 //       in a row); 2/3 or 3/2 of the shown tempo - a typical misreading of
 //       music with strong off-beats - has to last 3 s (6 readings).
-// TAP:  pressing Enter or the space bar switches to tapping at once; the tapped
+// TAP:  pressing M5 switches to tapping at once; the tapped
 //       tempo is shown after 3 taps, exactly as tapped (no octave guessing).
 //       3 s without a tap: back to listening, which then keeps the tapped
 //       octave. (Claps need no tapping: AUTO hears them like drum hits.)
 // A dot flashes on every beat; in AUTO it follows the music (every clear onset
 // near a predicted beat pulls the beat clock a little towards it).
-// Keys: Enter/space tap, , halve / / double the reading (for tempos read at
-//       the other octave), r start again, d dump the last 8 s of per-band
+// Buttons: M5 tap, PWR halve / B double the reading (for tempos read at the
+//       other octave); menu: start again, dump the last 8 s of per-band
 //       onsets to the serial console (also on "d" sent over serial).
 #include <algorithm>
 #include <memory>
@@ -84,16 +84,25 @@ class BpmApp : public App {
 
   int help(const ui::HelpItem *&items) const override {
     static const ui::HelpItem HELP[] = {
-        {"Enter", "tap the beat (or space);"},
+        {"M5", "tap the beat;"},
         {"", "3 s no tap: listen again"},
-        {", /", "tempo /2  x2"},
-        {"r", "start again"},
+        {"PWR/B", "tempo /2  x2"},
+        {"menu", "start again"},
         {nullptr, "orange tempo: rhythm unclear"},
         {nullptr, "the dot flashes on the beat"},
         {nullptr, "claps are heard like drums"},
     };
     items = HELP;
     return sizeof(HELP) / sizeof(HELP[0]);
+  }
+
+  int menu(const MenuItem *&items) const override {
+    static const MenuItem MENU[] = {
+        {"Start again", 'r', false},
+        {"Dump onsets (serial)", 'd', false},
+    };
+    items = MENU;
+    return sizeof(MENU) / sizeof(MENU[0]);
   }
 
   void onKey(const Key &key) override {

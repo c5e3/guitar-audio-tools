@@ -1,26 +1,29 @@
-# Guitar Audio Tools for Cardputer ADV
+# Guitar Audio Tools for M5StickC Plus 1.1
 
-Audio tools for guitarists and musicians on the M5Stack Cardputer ADV
-(ESP32-S3): a precise tuner, a strum tuner for all six strings at once, BPM
-detector, spectrum analyser, sound level meter and more.
+Audio tools for guitarists and musicians on the M5Stack **M5StickC Plus 1.1**
+(ESP32-PICO-D4, AXP192), using its built-in SPM1423 PDM microphone: a precise
+tuner, a strum tuner for all six strings at once, BPM detector, spectrum
+analyser, sound level meter and more.
 
-**For the Cardputer ADV only** (ES8311 audio codec): on the original Cardputer
-the microphone stays silent. Install it from **M5Burner** (search "Guitar Audio
-Tools") or from the firmware list of the Launcher, or build it yourself (below).
+Ported from the Cardputer ADV version. The display (240 x 135) is the same,
+the keyboard is replaced by the three buttons (see *Controls*). Not for the
+M5StickC Plus2 (different power button and power chip). Build and upload
+it yourself (below). The screenshots are from the Cardputer; the screens are
+the same except for the bottom line.
 
 | | |
 |---|---|
 | ![Launcher](docs/images/launcher.png) | ![Guitar tuner](docs/images/tuner.png) |
-| Launcher: `,` `/` browse, `Enter` open | Guitar tuner: E4, 3 cents flat |
+| Launcher: PWR / B browse, M5 open | Guitar tuner: E4, 3 cents flat |
 | ![Strum tuner](docs/images/strum_tuner.png) | ![Metronome](docs/images/metronome.png) |
 | Strum tuner: all six strings from one strum | Metronome: 4/4, the frame flashes on the beat |
 | ![Chords](docs/images/chords.png) | ![Scales](docs/images/scales.png) |
-| Chords: type `am7`, see the shape | Scales: A minor pentatonic on the neck |
+| Chords: choose root and type, see the shape | Scales: A minor pentatonic on the neck |
 | ![Spectrum](docs/images/spectrum.png) | ![Decibel meter](docs/images/decibel_meter.png) |
 | Spectrum: 26 third-octave bands | Decibel meter: dBA, Leq, Max, Min |
 
 ## Apps
-Version **1.0.0-beta.2** (shown on the launcher's help page `h` and printed on
+Version **1.0.0-beta.2** (shown on the launcher's help page and printed on
 the serial console at start). In the order of the launcher:
 
 1. **Guitar tuner** – needle gauge ±50 cents, note name
@@ -29,12 +32,11 @@ the serial console at start). In the order of the launcher:
 4. **BPM detector** – from music or by tapping (tap tempo)
 5. **Chords** – chord dictionary: type a name, see the shape on the fretboard
 6. **Scales** – scales on the whole fretboard
-7. **Recorder** – WAV files on the SD card
-8. **Intonation** – guitar setup: open string (or 12th-fret harmonic) vs. the
+7. **Intonation** – guitar setup: open string (or 12th-fret harmonic) vs. the
    12th fret, tells which way to move the saddle, overview of all 6 strings
-9. **Spectrum analyser** – green/yellow/red bars (16 bars or third octaves)
-10. **Decibel meter** – calibrated dB SPL, max, average (Leq), A-weighting
-11. **Mic test** – diagnostics
+8. **Spectrum analyser** – green/yellow/red bars (16 bars or third octaves)
+9. **Decibel meter** – calibrated dB SPL, max, average (Leq), A-weighting
+10. **Mic test** – diagnostics
 
 The firmware is meant for musicians and guitarists. (A night/snoring monitor
 was dropped for that reason. Checking guitar intonation up the neck needs no
@@ -45,18 +47,33 @@ Design and development order: [ARCHITECTURE.md](ARCHITECTURE.md).
 Current state: all apps done and tested on the device (beta).
 
 ## Controls
-Every app: `h` shows a help page with its keys (big, readable font), `Esc` goes
-back to the launcher. The keys follow one scheme: `Enter` = the main action,
-`,` / `/` (left/right) = change a mode or value, `;` / `.` (up/down) = microphone
-gain (shown for 1.5 s as "MIC GAIN 27 dB", remembered per app). All text is white or coloured (no grey text: it is hard to read on the
-small display).
+Three buttons, the same scheme everywhere (hold the StickC with the M5 button
+to the right of the display):
 
-- Launcher: `,` / `/` browse the apps (round in both directions), `Enter` opens
+| Button | Click | Hold |
+|--------|-------|------|
+| **M5** (front, big) | OK / the app's main action | open the **menu** |
+| **B** (side) | next / more (+) | – |
+| **PWR** (other side) | previous / less (−) | back to the app list |
+
+The menu (hold M5) lists the app's other functions (microphone gain, modes,
+calibration...), then **Help** and **Back to the apps**. In the menu PWR / B move,
+M5 selects, holding M5 closes it. Entries you usually press several times
+(gain + / −, tempo ± 5...) keep the menu open, and the new value is flashed
+on screen. Microphone gain is shown for 1.5 s as "MIC GAIN 27 dB" and
+remembered per app. The help page closes with any button. In the launcher
+the menu has Help and Power off. (Holding PWR for 6 s switches the StickC off
+in hardware.)
+
+In the text below, key names from the Cardputer version map as follows:
+`Enter` = M5, `,` / `/` = PWR / B, everything else = an entry in the menu.
+
+- Launcher: PWR / B browse the apps (round in both directions), M5 opens
   one. After power-on the last opened app is selected (saved by its title).
 - Decibel meter: `a` A/Z weighting, `Enter` (or `r`) reset Leq/Max/Min,
   `c` calibration (`;`/`.` ±0.5 dB, `,`/`/` ±5 dB, `Enter` saves, `c` cancels).
   Samples at 32 kHz; A-weighting follows IEC 61672 within 0.25 dB up to 8 kHz.
-  Automatic range: codec gain 18 dB, switches to 0 dB for very loud sound.
+  Automatic range: (digital) gain 18 dB, switches to 0 dB for very loud sound.
   Time weighting Fast (1/8 s); the big number is rewritten twice per second
   like on real meters, the bar moves smoothly.
 - Guitar tuner: `Enter` (or `m`) GUITAR / CHROMATIC mode, `,`/`/` reference pitch A4 −1/+1 Hz
@@ -105,9 +122,10 @@ small display).
   beat. `,` /2, `/` x2, `r` restart, `d` dump onset data (serial).
   Tested on songs played from a phone: Sandstorm 136.1, Levels 126.0, Bad
   Romance 119, Thunderstruck 133, Another One Bites the Dust 110.
-- Metronome: `Enter` start/stop, `,`/`/` tempo ±1, `-`/`=` ±5 (30–250 BPM),
-  space taps the tempo, `m` 2/4 3/4 4/4 6/8 (accent on 1; in 6/8 also on 4),
-  `;`/`.` volume, `l` takes the last tempo from the BPM app. The clicks are
+- Metronome: M5 start/stop, PWR / B tempo ±1 (30–250 BPM); menu: ±5, tap
+  tempo (select it, then press M5 on the beat), 2/4 3/4 4/4 6/8 (accent on 1;
+  in 6/8 also on 4), volume, the last tempo from the BPM app. The clicks are
+  short tones on the StickC's buzzer (higher on the first beat). The clicks are
   timed by a task of their own on the other CPU core (drawing the display
   would make them uneven); the frame flashes on every beat.
 - Intonation: play the open string (or its 12th-fret harmonic), then the same
@@ -116,43 +134,30 @@ small display).
   deviation from the octave: sharp = move the saddle back (away from the neck),
   flat = forward, within 2 cents = OK. A row shows all six strings.
   `Enter` again, `r` clear all, `;`/`.` gain. The guitar must be tuned first.
-- Chords: type a chord name, e.g. `am7`, `f#m` (`#` = shift + 3), `bb`, `c9`.
-  Types: major, `m`, `7`, `maj7`, `m7`, `sus2`, `sus4`, `dim`, `aug`, `6`, `9`,
+- Chords: M5 moves between the fields ROOT → TYPE → SHAPE (the active one is
+  yellow), PWR / B change it (roots C C# D Eb E F F# G Ab A Bb B). Types: major, `m`, `7`, `maj7`, `m7`, `sus2`, `sus4`, `dim`, `aug`, `6`, `9`,
   `add9`, `5`. The shape is drawn on a horizontal fretboard (high E string at
   the top, as seen when playing): numbers = fingers, orange = root, a green bar =
   barre, `x` = not played, a ring = open string. Next to the name: the notes of
   the chord, correctly spelled (Cm = C Eb G). Shapes: the open chord (if there
   is one), then movable barre shapes with the root on the E and A strings.
-  `,`/`/` other shape, `Del` deletes a letter, `Enter` clears the name. A note
-  letter that cannot continue the name starts a new chord (after `am7`, `d`
-  shows D); `Enter` is needed only when it could continue it (C then A: `ca`
-  may become `cadd9`). No microphone.
-- Scales: `a`–`g` the key (`#` or `b` right after the letter: sharp / flat;
-  `b` alone is B), `,`/`/` the scale (minor and major pentatonic, blues, major,
-  minor, dorian, mixolydian, harmonic minor), `;`/`.` frets 0–12 / 12–24.
+  No microphone.
+- Scales: M5 moves between the fields KEY → SCALE → FRETS, PWR / B change it:
+  the key, the scale (minor and major pentatonic, blues, major, minor, dorian,
+  mixolydian, harmonic minor), frets 0–12 / 12–24.
   Small dots on the fretboard: orange = root, green = other notes, light blue =
   the blue note (b5). Note names are spelled for the key (F major has Bb).
-- Recorder: `Enter` record / stop, space play / stop, `,`/`/` previous / next
-  recording, `Del` delete (twice), `;`/`.` microphone gain (volume while
-  playing). WAV files, 16 kHz mono, in `/recordings` on the SD card
-  (REC_0001.wav ..., or a name typed right after recording: `Enter` saves, an
-  empty name or `Esc` keeps REC_...; nothing else on the card is touched: an
-  existing `/recordings` folder is used as it is, a new recording never takes a
-  name that is already on the card, `.WAV` files of other apps included). Samples are written in
-  16 KB blocks; a warning appears if the card is too slow and gaps occur.
-- Mic test: `;` / `.` change the analog microphone gain (0–30 dB in 3 dB steps),
-  `g` runs an automatic gain test (play a steady tone; the level should rise
-  6 dB per step). The serial console (115200 baud) prints the values 4× per second.
+- Mic test: PWR / B change the microphone gain (0–30 dB in 3 dB steps); the
+  menu runs an automatic gain test or sends 3 s of raw samples to the PC. The serial console (115200 baud) prints the values 4× per second.
 
 ## Files
 | Path | Content |
 |------|---------|
-| `src/main.cpp` | starting apps, feeding them audio, keys and redraws |
+| `src/main.cpp` | starting apps, feeding them audio, buttons, the menu and redraws |
 | `src/launcher.cpp` | app carousel with icons, list of all apps |
 | `src/app.h` | interface every app implements |
 | `src/apps/` | the apps (`mic_test.cpp`, ...) |
-| `src/services/` | `audio_in` (gapless microphone stream), `settings` (NVS), `storage` (SD card), `ui` (screen helpers) |
-| `src/hw/es8311.*` | direct access to the ES8311 codec (gain, register dump) |
+| `src/services/` | `audio_in` (gapless microphone stream, gain), `settings` (NVS), `ui` (screen helpers, menu) |
 | `lib/dsp/` | signal processing without hardware: levels, weighting, YIN pitch, notes, tuning, strum tuner, FFT, spectrum bands, onsets, tempo, intonation, WAV header, music theory (chord spelling and shapes) |
 | `test/test_dsp/` | unit tests of `lib/dsp`, run on the PC |
 
@@ -160,40 +165,24 @@ small display).
 PlatformIO: `pio run`, upload with `pio run -t upload`,
 unit tests on the PC with `pio test -e native` (needs gcc).
 
-**The Arduino core must be 3.2.0** (pinned in `platformio.ini` through the
-pioarduino platform 54.03.20). With core 3.3.x (ESP-IDF 5.5) the ADV microphone
-returns only constant samples (-1), see
-[espressif/esp-idf#18621](https://github.com/espressif/esp-idf/issues/18621).
-Credit for finding this goes to the
-[audio-spy](https://github.com/Tombotronic/audio-spy) project.
+The Arduino core is pinned to **3.2.0** (pioarduino platform 54.03.20), the
+core the firmware was developed and measured on. `board_build.variant` is set
+in `platformio.ini` because the `m5stick-c` board file still names a variant
+that core 3.x no longer has.
 
-## Notes on the ADV microphone (ES8311)
-- When the microphone stops, M5Unified powers the whole codec down, which
-  pops in the speaker every time an app is closed. `es8311::installQuietMicCallback()`
-  replaces that callback: the codec is set up the same way but stays powered.
-Unlike the original Cardputer (SPM1423 PDM microphone wired straight to I2S),
-the ADV routes the microphone through the **ES8311** codec (I2C address 0x18).
-Firmware written for the original Cardputer does not set the codec up, so the
-microphone stays silent on the ADV.
-
-M5Unified 0.2.23 powers the codec up with PGA 0 dB (reg 0x14 = 0x10),
-ADC volume 0 dB (0x17 = 0xBF), equalizer bypassed and dynamic high-pass filter
-on (0x1C = 0x6A). It then multiplies the samples in software
-(`magnification` 16 / (`over_sampling` 2 × 2) = ×4). This project instead
-raises the analog gain in the codec and takes the samples unscaled
-(`magnification` 4, `over_sampling` 2 → ×1).
-
-Useful registers (ES8311 User Guide Rev 1.11):
-
-| Reg | Meaning |
-|-----|---------|
-| 0x14 | bits 5:4 input (1 = MIC1), bits 3:0 PGA gain 0–30 dB in 3 dB steps |
-| 0x16 | ADC_SCALE: digital gain 0–42 dB in 6 dB steps |
-| 0x17 | ADC volume −95.5 to +32 dB in 0.5 dB steps (0xBF = 0 dB) |
-| 0x18–0x19 | ALC (automatic level control) – must stay off for measurements |
-| 0x1A | automute / noise gate – off for measurements |
-| 0x1B, 0x1C | high-pass filter (DC removal), equalizer bypass |
-| 0x1D–0x30 | equalizer coefficients (one 2nd-order biquad) |
+## Notes on the StickC Plus microphone (SPM1423)
+- A PDM microphone read by the ESP32's I2S peripheral (clock GPIO 0, data
+  GPIO 34), powered by LDO0 of the AXP192. M5Unified removes the DC offset.
+- It has no analog gain. The "microphone gain" (0–30 dB) is applied
+  digitally in `audio_in` (samples are multiplied and clipped). 0 dB = the
+  unscaled output of the PDM decoder (`magnification` 4 / (`over_sampling` 2 × 2)).
+- The level thresholds, the default gains and the decibel meter's default
+  calibration come from the Cardputer ADV (ES8311) and were **not measured on
+  the StickC**. Calibrate the decibel meter (menu) against a phone app, and
+  adjust the gain per app if the tuner reacts badly (too quiet / CLIP in Mic
+  test).
+- The buzzer (GPIO 2) is only used by the Metronome; it cannot play back
+  recordings, and there is no SD card, so the Recorder app was removed.
 
 ### Pitch accuracy
 Plain YIN estimates the fraction of the period with a parabola through three

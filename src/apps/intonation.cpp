@@ -9,7 +9,7 @@
 // the neck. Flat: move it forward, towards the neck. Within 2 cents: OK.
 // Each note is measured on its settled part (0.4 ... 1.6 s after the pluck,
 // median), so pluck both notes with about the same strength.
-// Keys: Enter measure again, r clear all strings, ; . microphone gain.
+// Buttons: M5 measure again; menu: clear all strings, microphone gain.
 #include <memory>
 #include <vector>
 #include "apps.h"
@@ -18,7 +18,6 @@
 #include "notes.h"
 #include "pitch.h"
 #include "tuning.h"
-#include "../hw/es8311.h"
 #include "../services/audio_in.h"
 #include "../services/settings.h"
 #include "../services/ui.h"
@@ -76,11 +75,22 @@ class IntonationApp : public App {
         {nullptr, "2. the same string at fret 12"},
         {nullptr, "sharp: saddle back (from neck)"},
         {nullptr, "flat: saddle forward (to neck)"},
-        {"Enter", "again   r: clear all"},
-        {"; .", "microphone gain + / -"},
+        {"M5", "measure again"},
+        {"menu", "clear all, mic gain"},
     };
     items = HELP;
     return sizeof(HELP) / sizeof(HELP[0]);
+  }
+
+  int menu(const MenuItem *&items) const override {
+    static const MenuItem MENU[] = {
+        {"Measure again", '\r', false},
+        {"Clear all strings", 'r', false},
+        {"Mic gain +", ';', true},
+        {"Mic gain -", '.', true},
+    };
+    items = MENU;
+    return sizeof(MENU) / sizeof(MENU[0]);
   }
 
   void onKey(const Key &key) override {
@@ -91,9 +101,9 @@ class IntonationApp : public App {
       restart();
     }
     if (key.ch == ';' || key.ch == '.') {
-      es8311::setPgaGain(es8311::pgaGain() + (key.ch == ';' ? 3 : -3));
-      settings::putInt("g_int", es8311::pgaGain());
-      ui::flashGain(es8311::pgaGain());
+      audio_in::setGain(audio_in::gain() + (key.ch == ';' ? 3 : -3));
+      settings::putInt("g_int", audio_in::gain());
+      ui::flashGain(audio_in::gain());
     }
   }
 

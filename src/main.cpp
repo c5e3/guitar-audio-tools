@@ -1,21 +1,25 @@
-// Guitar Audio Tools for the M5Stack Cardputer ADV
+// Guitar Audio Tools for the M5Stack M5StickC Plus 1.1
 //
 // Shows the app launcher, runs the selected app and feeds it with
-// microphone samples, key presses and drawing requests. See ARCHITECTURE.md.
-// Launcher keys: , / browse, Enter opens, Esc (top left key) returns to it.
+// microphone samples, button presses and drawing requests. See ARCHITECTURE.md.
+//
+// Buttons (the same everywhere):
+//   M5  (front, big)      click: OK / the main action     hold: menu
+//   B   (side)            next / more
+//   PWR (other side)      click: previous / less          hold: back to the apps
+// In the menu: PWR / B move, M5 selects, holding M5 closes it.
+// While a help page is shown, any button closes it.
 
-#include <M5Cardputer.h>
-#include <string>
+#include <M5Unified.h>
 #include "app.h"
 #include "launcher.h"
 #include "version.h"
-#include "hw/es8311.h"
 #include "services/audio_in.h"
 #include "services/settings.h"
 #include "services/ui.h"
 
 App *current = nullptr;         // the running app, nullptr = launcher
-bool showingHelp = false;       // the h key: help page instead of the app
+bool showingHelp = false;       // help page instead of the app
 
 // ---------- apps ----------
 
@@ -34,8 +38,6 @@ void closeApp() {
   current = nullptr;
 }
 
-// ---------- keyboard ----------
-
 // A key goes to the running app, or to the launcher when no app runs.
 void deliver(const Key &key) {
   if (current) {
@@ -45,71 +47,108 @@ void deliver(const Key &key) {
   }
 }
 
-// The library reports a change whenever the NUMBER of held keys changes and
-// then lists all keys held down. In fast typing the keys overlap (the next one
-// is pressed before the previous one is released), so only the keys that were
-// not held before are passed on; otherwise "ri" would come out as "rri".
-void handleKeys() {
-  if (!M5Cardputer.Keyboard.isChange()) return;
-  auto state = M5Cardputer.Keyboard.keysState();
-  static std::string held;              // keys held at the last change
-  static bool heldEnter = false, heldDel = false;
+// ---------- menu (hold M5) ----------
 
-  std::string before = held, fresh;
-  for (char ch : state.word) {
-    size_t p = before.find(ch);
-    if (p != std::string::npos) before.erase(p, 1);
-    else fresh += ch;
+// keys of the lines main adds itself
+const char KEY_HELP = 1, KEY_BACK = 2, KEY_POWER_OFF = 3;
+const int MAX_MENU = 16;
+
+bool menuOpen = false;
+int menuSelected = 0;
+MenuItem menuItems[MAX_MENU];
+const char *menuLabels[MAX_MENU];
+int menuCount = 0;
+
+void openMenu() {
+  menuCount = 0;
+  if (current) {
+    const MenuItem *items = nullptr;
+    int count = current->menu(items);
+    for (int i = 0; i < count && menuCount < MAX_MENU - 2; i++) menuItems[menuCount++] = items[i];
+    menuItems[menuCount++] = {"Help", KEY_HELP, false};
+    menuItems[menuCount++] = {"Back to the apps", KEY_BACK, false};
+  } else {
+    menuItems[menuCount++] = {"Help", KEY_HELP, false};
+    menuItems[menuCount++] = {"Power off", KEY_POWER_OFF, false};
   }
-  Key key;
-  key.enter = state.enter && !heldEnter;
-  key.del = state.del && !heldDel;
-  held.assign(state.word.begin(), state.word.end());
-  heldEnter = state.enter;
-  heldDel = state.del;
-  if (fresh.empty() && !key.enter && !key.del) return;   // a key was released
+  for (int i = 0; i < menuCount; i++) menuLabels[i] = menuItems[i].label;
+  menuSelected = 0;
+  menuOpen = true;
+}
 
-  // while the help page is shown, any key closes it (Esc too)
-  if (showingHelp) {
+void selectMenuItem() {
+  const MenuItem &item = menuItems[menuSelected];
+  if (!item.repeat) menuOpen = false;
+  if (item.key == KEY_HELP) {
+    showingHelp = true;
+  } else if (item.key == KEY_BACK) {
+    if (current) closeApp();
+  } else if (item.key == KEY_POWER_OFF) {
+    M5.Power.powerOff();
+  } else {
+    Key key;
+    if (item.key == '\r') key.enter = true;
+    else key.ch = item.key;
+    deliver(key);
+  }
+}
+
+// ---------- buttons ----------
+
+void handleButtons() {
+  bool ok = M5.BtnA.wasClicked();       // released before the hold time
+  bool okHold = M5.BtnA.wasHold();
+  bool next = M5.BtnB.wasPressed();     // at once: no hold function
+  bool prev = M5.BtnPWR.wasClicked();   // the power chip reports it on release
+  bool prevHold = M5.BtnPWR.wasHold();
+  if (!ok && !okHold && !next && !prev && !prevHold) return;
+
+  if (showingHelp) {                    // any button closes the help page
     showingHelp = false;
     return;
   }
 
-  if (fresh.empty()) {
-    deliver(key);
+  if (menuOpen) {
+    if (next) menuSelected = (menuSelected + 1) % menuCount;
+    if (prev) menuSelected = (menuSelected + menuCount - 1) % menuCount;
+    if (ok) selectMenuItem();
+    if (okHold || prevHold) menuOpen = false;
     return;
   }
-  for (char ch : fresh) {
-    key.ch = ch;
-    if (current && current->capturesKeys()) {
-      deliver(key);               // typing: every key goes to the app
-    } else if (ch == '`') {       // Esc
-      if (current) closeApp();
-    } else if (ch == 'h') {       // help page
-      showingHelp = true;
-    } else {
-      deliver(key);
-    }
-    key.enter = key.del = false;  // Enter / Del only once
+
+  if (okHold) {
+    openMenu();
+    return;
   }
+  if (prevHold) {
+    if (current) closeApp();
+    return;
+  }
+  Key key;
+  if (ok) key.enter = true;
+  else if (next) key.ch = '/';
+  else if (prev) key.ch = ',';
+  deliver(key);
 }
 
 // ---------- main program ----------
 
 void setup() {
   auto cfg = M5.config();
-  M5Cardputer.begin(cfg, true);       // true = enable the keyboard too
+  cfg.internal_mic = true;
+  cfg.internal_spk = true;
+  M5.begin(cfg);
   Serial.begin(115200);
   Serial.println("Guitar Audio Tools " FIRMWARE_VERSION);
-  es8311::installQuietMicCallback();  // no pop in the speaker when an app closes
+  M5.Display.setBrightness(128);
   ui::begin();
   settings::begin();
   launcher::begin();
 }
 
 void loop() {
-  M5Cardputer.update();
-  handleKeys();
+  M5.update();
+  handleButtons();
 
   if (current) current->tick();
 
@@ -125,10 +164,14 @@ void loop() {
   if (millis() - lastDraw >= 33) {
     lastDraw = millis();
     ui::clear();
+    const char *title = current ? current->name() : "Guitar Audio Tools";
     if (showingHelp) {
       const ui::HelpItem *items = nullptr;
       int count = current ? current->help(items) : launcher::help(items);
-      ui::helpPage(current ? current->name() : "Guitar Audio Tools", items, count);
+      ui::helpPage(title, items, count);
+    } else if (menuOpen) {
+      ui::menuPage(title, menuLabels, menuCount, menuSelected);
+      ui::drawFlash();                  // e.g. the new gain after "Mic gain +"
     } else if (current) {
       current->draw(ui::canvas);
       ui::drawFlash();

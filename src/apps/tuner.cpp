@@ -1,14 +1,14 @@
 // Guitar tuner with a needle gauge (-50 ... +50 cents, 5-cent ticks,
 // green centre = within 3 cents).
 //
-// Modes (key m, remembered):
+// Modes (M5 button, remembered):
 //  - GUITAR: the nearest string of the standard tuning E2 A2 D3 G3 B3 E4.
 //    A string that is far out of tune still shows its own name, e.g. "E -90",
 //    with a "tune up" / "tune down" hint.
 //  - CHROMATIC: the nearest of all 12 notes, for other instruments,
 //    other tunings or singing.
-// Other keys: , / reference pitch A4 -1 / +1 Hz (remembered), ; . mic gain,
-// Enter = m.
+// Buttons: M5 = mode, PWR / B reference pitch A4 -1 / +1 Hz (remembered);
+// menu: mic gain.
 #include <memory>
 #include <vector>
 #include "apps.h"
@@ -16,7 +16,6 @@
 #include "notes.h"
 #include "pitch.h"
 #include "tuning.h"
-#include "../hw/es8311.h"
 #include "../services/audio_in.h"
 #include "../services/settings.h"
 #include "../services/ui.h"
@@ -80,9 +79,9 @@ class TunerApp : public App {
 
   int help(const ui::HelpItem *&items) const override {
     static const ui::HelpItem HELP[] = {
-        {"Enter", "guitar / chromatic mode"},
-        {", /", "reference A4 -1 / +1 Hz"},
-        {"; .", "microphone gain + / -"},
+        {"M5", "guitar / chromatic mode"},
+        {"PWR/B", "reference A4 -1 / +1 Hz"},
+        {"menu", "microphone gain + / -"},
         {nullptr, "green: in tune (within 3 c)"},
         {nullptr, "guitar: nearest string EADGBE"},
         {nullptr, "chromatic: nearest of 12 notes"},
@@ -91,7 +90,22 @@ class TunerApp : public App {
     return sizeof(HELP) / sizeof(HELP[0]);
   }
 
+  int menu(const MenuItem *&items) const override {
+    static const MenuItem MENU[] = {
+        {"Guitar / chromatic", 'm', false},
+        {"Mic gain +", ';', true},
+        {"Mic gain -", '.', true},
+        {"A4 = 440 Hz", 'a', false},
+    };
+    items = MENU;
+    return sizeof(MENU) / sizeof(MENU[0]);
+  }
+
   void onKey(const Key &key) override {
+    if (key.ch == 'a') {
+      a4_ = 440;
+      settings::putFloat("a4", a4_);
+    }
     if (key.ch == 'm' || key.enter) {
       chromatic_ = !chromatic_;
       settings::putInt("tun_chrom", chromatic_);
@@ -103,9 +117,9 @@ class TunerApp : public App {
       settings::putFloat("a4", a4_);
     }
     if (key.ch == ';' || key.ch == '.') {
-      es8311::setPgaGain(es8311::pgaGain() + (key.ch == ';' ? 3 : -3));
-      settings::putInt("g_tuner", es8311::pgaGain());
-      ui::flashGain(es8311::pgaGain());
+      audio_in::setGain(audio_in::gain() + (key.ch == ';' ? 3 : -3));
+      settings::putInt("g_tuner", audio_in::gain());
+      ui::flashGain(audio_in::gain());
     }
   }
 
@@ -255,7 +269,7 @@ class TunerApp : public App {
     if (millis() - lastLogMs_ >= 250) {
       lastLogMs_ = millis();
       Serial.printf("raw=%.2f ap=%.3f steady=%.2f dBFS=%.1f gain=%d a4=%.0f rate=%.2f corr=%+.0fppm dropped=%u\n",
-                    raw, aperiodicity, hz_, db, es8311::pgaGain(), a4_, audio_in::measuredRate(),
+                    raw, aperiodicity, hz_, db, audio_in::gain(), a4_, audio_in::measuredRate(),
                     (audio_in::rateCorrection() - 1) * 1e6f, (unsigned)audio_in::droppedSamples());
     }
   }

@@ -1,8 +1,8 @@
 // Mic test: loudness in dBFS, waveform, pitch and note.
-// Keys: ; / . change the codec gain, g runs an automatic gain test,
-//       d arms a raw sample dump: the recording starts by itself at the next
-//       pluck (a jump in level; the click of the d key is ignored), keeps 0.1 s
-//       before it and lasts up to 3 s; then it is sent to the serial console.
+// Buttons: PWR / B change the (digital) microphone gain; menu: an automatic
+//       gain test, and a raw sample dump: the recording starts by itself at
+//       the next pluck (a jump in level; the button click is ignored), keeps
+//       0.1 s before it and lasts up to 3 s; then it is sent to the serial console.
 // Used to check the microphone and as a simple example of an app.
 #include <algorithm>
 #include <vector>
@@ -10,7 +10,6 @@
 #include "level.h"
 #include "notes.h"
 #include "pitch.h"
-#include "../hw/es8311.h"
 #include "../services/audio_in.h"
 #include "../services/settings.h"
 #include "../services/ui.h"
@@ -72,21 +71,30 @@ class MicTestApp : public App {
 
   int help(const ui::HelpItem *&items) const override {
     static const ui::HelpItem HELP[] = {
-        {"; .", "gain + / - (3 dB steps)"},
-        {"g", "gain test: play a steady"},
+        {"PWR/B", "gain - / + (3 dB steps)"},
+        {"menu", "gain test: play a steady"},
         {"", "tone, see serial log"},
-        {"d", "send 3 s of sound to PC"},
+        {"menu", "send 3 s of sound to PC"},
         {nullptr, "CLIP: too loud, less gain"},
     };
     items = HELP;
     return sizeof(HELP) / sizeof(HELP[0]);
   }
 
+  int menu(const MenuItem *&items) const override {
+    static const MenuItem MENU[] = {
+        {"Gain test (serial log)", 'g', false},
+        {"Dump 3 s to serial", 'd', false},
+    };
+    items = MENU;
+    return sizeof(MENU) / sizeof(MENU[0]);
+  }
+
   void onKey(const Key &key) override {
-    if (key.ch == ';' || key.ch == '.') {
-      es8311::setPgaGain(es8311::pgaGain() + (key.ch == ';' ? 3 : -3));
-      settings::putInt("g_mic", es8311::pgaGain());
-      ui::flashGain(es8311::pgaGain());
+    if (key.ch == '/' || key.ch == ',') {
+      audio_in::setGain(audio_in::gain() + (key.ch == '/' ? 3 : -3));
+      settings::putInt("g_mic", audio_in::gain());
+      ui::flashGain(audio_in::gain());
     }
     if (key.ch == 'g' && !sweeping_) startSweep();
     if (key.ch == 'd') startDump();
@@ -94,7 +102,7 @@ class MicTestApp : public App {
 
   void draw(M5Canvas &c) override {
     char right[24];
-    snprintf(right, sizeof(right), "PGA %d dB", es8311::pgaGain());
+    snprintf(right, sizeof(right), "GAIN %d dB", audio_in::gain());
     const char *title = dumpState_ == DumpState::Armed       ? "ARMED - pluck now!"
                         : dumpState_ == DumpState::Recording ? "RECORDING..."
                         : sweeping_                          ? "GAIN TEST - steady tone!"
@@ -176,7 +184,7 @@ class MicTestApp : public App {
     if (millis() - lastPrintMs_ >= 250) {
       lastPrintMs_ = millis();
       Serial.printf("gain=%ddB dBFS=%.1f peak=%d f=%.2fHz rate=%.2f dropped=%u\n",
-                    es8311::pgaGain(), db, peak_, hz, audio_in::measuredRate(),
+                    audio_in::gain(), db, peak_, hz, audio_in::measuredRate(),
                     (unsigned)audio_in::droppedSamples());
     }
   }
@@ -238,18 +246,18 @@ class MicTestApp : public App {
     dumpState_ = DumpState::Idle;
   }
 
-  // Automatic gain test: PGA 0, 6 ... 30 dB, 2 s each, average level printed.
+  // Automatic gain test: gain 0, 6 ... 30 dB, 2 s each, average level printed.
   // With a steady tone the level should rise by about 6 dB per step.
   void startSweep() {
     sweeping_ = true;
-    gainBeforeSweep_ = es8311::pgaGain();
+    gainBeforeSweep_ = audio_in::gain();
     sweepGain_ = 0;
     nextSweepStep();
     Serial.println("SWEEP start");
   }
 
   void nextSweepStep() {
-    es8311::setPgaGain(sweepGain_);
+    audio_in::setGain(sweepGain_);
     sweepStartMs_ = millis();
     sweepPower_ = 0;
     sweepBlocks_ = 0;
@@ -265,7 +273,7 @@ class MicTestApp : public App {
     sweepGain_ += 6;
     if (sweepGain_ > 30) {
       sweeping_ = false;
-      es8311::setPgaGain(gainBeforeSweep_);          // back to the gain used before
+      audio_in::setGain(gainBeforeSweep_);          // back to the gain used before
       Serial.println("SWEEP done");
     } else {
       nextSweepStep();

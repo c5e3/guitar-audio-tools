@@ -1,9 +1,9 @@
 #include "audio_in.h"
-#include <M5Cardputer.h>
+#include <M5Unified.h>
 #include <freertos/stream_buffer.h>
 #include <atomic>
+#include <cmath>
 #include <esp_timer.h>
-#include "../hw/es8311.h"
 
 namespace audio_in {
 
@@ -15,6 +15,8 @@ static StreamBufferHandle_t stream = nullptr;
 static std::atomic<uint32_t> dropped{0};
 static bool isRunning = false;
 static uint32_t currentRate = 0;
+static std::atomic<int32_t> gainQ8{256};   // sample multiplier, 256 = 1.0 (32767 x 8092 fits int32)
+static int gainDb = 0;
 
 // Sample rate measurement: every filled buffer is time-stamped in microseconds.
 // The rate = samples between the first and the last time stamp / time between
@@ -38,48 +40,64 @@ static void onBufferFilled(void *, void *data, size_t length) {
   lastCount = filledSamples;
   portEXIT_CRITICAL(&timingLock);
 
+  int16_t *samples = (int16_t *)data;
+  int32_t g = gainQ8;
+  if (g != 256) {
+    for (size_t i = 0; i < length; i++) {
+      int32_t v = (samples[i] * g) >> 8;
+      samples[i] = (int16_t)(v > 32767 ? 32767 : v < -32768 ? -32768 : v);
+    }
+  }
+
   size_t bytes = length * sizeof(int16_t);
   size_t sent = xStreamBufferSend(stream, data, bytes, 0);
   if (sent < bytes) dropped += (bytes - sent) / sizeof(int16_t);
-  M5Cardputer.Mic.record((int16_t *)data, length);   // queue it again
+  M5.Mic.record(samples, length);   // queue it again
 }
 
-bool start(uint32_t sampleRate, int gainDb) {
+bool start(uint32_t sampleRate, int startGainDb) {
   stop();
   if (!stream) stream = xStreamBufferCreate(STREAM_BYTES, sizeof(int16_t));
   if (!stream) return false;
   xStreamBufferReset(stream);
   dropped = 0;
 
-  M5Cardputer.Speaker.end();
+  M5.Speaker.end();
 
   // Unscaled samples: the library multiplies by magnification / (over_sampling * 2) = 1.
-  auto cfg = M5Cardputer.Mic.config();
+  auto cfg = M5.Mic.config();
   cfg.sample_rate = sampleRate;
   cfg.over_sampling = 2;
   cfg.magnification = 4;
   cfg.noise_filter_level = 0;
-  M5Cardputer.Mic.config(cfg);
+  M5.Mic.config(cfg);
   // The callback may only be changed while the Mic is stopped.
-  M5Cardputer.Mic.setBufferReleaseCallback(nullptr, onBufferFilled);
-  if (!M5Cardputer.Mic.begin()) return false;
+  M5.Mic.setBufferReleaseCallback(nullptr, onBufferFilled);
+  if (!M5.Mic.begin()) return false;
 
-  es8311::setPgaGain(gainDb);             // Mic.begin() reset the codec gain to 0 dB
+  setGain(startGainDb);
 
   currentRate = sampleRate;
   portENTER_CRITICAL(&timingLock);
   filledSamples = firstCount = lastCount = 0;
   firstUs = lastUs = 0;
   portEXIT_CRITICAL(&timingLock);
-  isRunning = M5Cardputer.Mic.record(chunks[0], CHUNK, sampleRate) &&
-              M5Cardputer.Mic.record(chunks[1], CHUNK, sampleRate);
+  isRunning = M5.Mic.record(chunks[0], CHUNK, sampleRate) &&
+              M5.Mic.record(chunks[1], CHUNK, sampleRate);
   return isRunning;
 }
 
 void stop() {
-  if (M5Cardputer.Mic.isRunning()) M5Cardputer.Mic.end();
+  if (M5.Mic.isRunning()) M5.Mic.end();
   isRunning = false;
 }
+
+void setGain(int db) {
+  gainDb = constrain(db, 0, 30) / 3 * 3;
+  gainQ8 = (int32_t)lroundf(256 * powf(10, gainDb / 20.0f));
+}
+
+int gain() { return gainDb; }
 
 bool running() { return isRunning; }
 uint32_t sampleRate() { return currentRate; }

@@ -5,7 +5,8 @@ namespace ui {
 M5Canvas canvas;
 
 void begin() {
-  M5Cardputer.Display.setRotation(1);     // landscape
+  // landscape, the M5 button right of the display (rotation 1 would put it left)
+  M5.Display.setRotation(3);
   canvas.createSprite(WIDTH, HEIGHT);
 }
 
@@ -47,7 +48,7 @@ void footerHelp() {
   canvas.setTextSize(1);
   canvas.setTextColor(YELLOW);
   canvas.setCursor(3, FOOTER_Y);
-  canvas.print("h: help   Esc: back");
+  canvas.print("hold M5: menu");
 }
 
 void helpPage(const char *title, const HelpItem *items, int count) {
@@ -73,7 +74,7 @@ void helpPage(const char *title, const HelpItem *items, int count) {
   }
   canvas.setTextColor(WHITE);
   canvas.setCursor(4, HEIGHT - 13);
-  canvas.print("any key: close help");
+  canvas.print("any button: close help");
   canvas.setFont(&fonts::Font0);             // back to the default font
 }
 
@@ -110,6 +111,31 @@ void drawFlash() {
   canvas.setTextSize(1);
 }
 
-void push() { canvas.pushSprite(&M5Cardputer.Display, 0, 0); }
+void menuPage(const char *title, const char *const *labels, int count, int selected) {
+  canvas.fillSprite(BLACK);
+  header(title, "MENU");
+  canvas.setFont(&fonts::DejaVu12);
+  canvas.setTextSize(1);
+  const int lineHeight = 15, rows = 7;
+  int first = constrain(selected - rows / 2, 0, max(0, count - rows));
+  for (int row = 0; row < rows && first + row < count; row++) {
+    int i = first + row;
+    int y = HEADER_HEIGHT + 2 + row * lineHeight;
+    if (i == selected) canvas.fillRect(0, y - 1, WIDTH - 6, lineHeight, NAVY);
+    canvas.setTextColor(i == selected ? YELLOW : WHITE);
+    canvas.setCursor(6, y + 1);
+    canvas.print(labels[i]);
+  }
+  // scroll bar when the list is longer than the screen
+  if (count > rows) {
+    int h = HEIGHT - HEADER_HEIGHT - 2;
+    canvas.drawFastVLine(WIDTH - 3, HEADER_HEIGHT + 1, h, DARKGREY);
+    canvas.fillRect(WIDTH - 4, HEADER_HEIGHT + 1 + h * first / count, 3, h * rows / count, WHITE);
+  }
+  canvas.setFont(&fonts::Font0);
+  footer("PWR/B: move  M5: select  hold: close");
+}
+
+void push() { canvas.pushSprite(&M5.Display, 0, 0); }
 
 }  // namespace ui

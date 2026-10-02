@@ -2,7 +2,7 @@
 // Everything is drawn into an off-screen canvas and pushed to the display at
 // once, so the picture does not flicker.
 #pragma once
-#include <M5Cardputer.h>
+#include <M5Unified.h>
 
 namespace ui {
 
@@ -13,7 +13,7 @@ const int FOOTER_Y = 126;        // bottom line with key help
 
 extern M5Canvas canvas;
 
-// One line of an app's help page: the key(s) and what they do.
+// One line of an app's help page: the button(s) and what they do.
 // keys == nullptr: an explanation line without a key (light blue, full width);
 // keys == "": the continuation of the line above.
 struct HelpItem {
@@ -25,12 +25,15 @@ void begin();
 void clear();
 void header(const char *title, const char *right = nullptr);
 void footer(const char *help);
-// the standard bottom line: "h: help   Esc: back" in yellow
+// the standard bottom line: "hold M5: menu" in yellow
 void footerHelp();
-// full-screen help page (bigger, clearer font), shown while h is active;
+// full-screen help page (bigger, clearer font), opened from the menu;
 // up to 7 lines of about 34 characters
 void helpPage(const char *title, const HelpItem *items, int count);
-// big "MIC GAIN 27 dB" box with a 0...30 dB bar for 1.5 s (after ; or .);
+// full-screen menu: a list of lines, `selected` highlighted; scrolls when
+// there are more lines than fit
+void menuPage(const char *title, const char *const *labels, int count, int selected);
+// big "MIC GAIN 27 dB" box with a 0...30 dB bar for 1.5 s (after gain + / -);
 // main draws it over the app with drawFlash()
 void flashGain(int db);
 // the same for any level, e.g. flashLevel("VOLUME", 7, 10, "")

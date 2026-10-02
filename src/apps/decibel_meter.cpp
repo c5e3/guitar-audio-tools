@@ -1,13 +1,13 @@
 // Decibel meter: sound level in dB SPL, A or Z weighted, Fast (1/8 s),
 // with Leq (average energy), Max, Min and a rating of the noise.
 //
-// Keys: a  A/Z weighting     Enter/r  reset Leq/Max/Min
+// Buttons: M5 reset Leq/Max/Min; menu: A/Z weighting, calibration.
 // (No Slow mode any more: with the number held for 0.5 s it was not needed.)
-//       c  calibration: ; . +-0.5 dB, , / +-5 dB, Enter saves, c cancels
+// Calibration: PWR / B -0.5 / +0.5 dB, menu -5 / +5 dB, M5 saves, the menu
+// entry "Calibrate / cancel" cancels.
 //
-// Range: normally the codec gain is 18 dB (quiet rooms up to about 100 dB).
-// When the signal gets close to clipping it switches to 0 dB (up to about
-// 120 dB) and back when it is quiet again. The meter gets the samples scaled
+// Range: normally the (digital) microphone gain is 18 dB. When the signal gets
+// close to clipping it switches to 0 dB and back when it is quiet again. The meter gets the samples scaled
 // back to the normal range, so Leq/Max/Min continue across a switch.
 //
 // Like real sound level meters, the big number is rewritten only twice per
@@ -16,7 +16,6 @@
 #include <memory>
 #include "apps.h"
 #include "sound_level.h"
-#include "../hw/es8311.h"
 #include "../services/audio_in.h"
 #include "../services/settings.h"
 #include "../services/ui.h"
@@ -30,8 +29,9 @@ const float LOUD_SCALE = 7.943f;        // 10^((18 - 0) / 20): back to normal-ra
 const int CLIP_PEAK = 29000;            // switch to the loud range above this sample value
 const float BACK_TO_NORMAL_DBFS = -24;  // switch back when Slow stays below this for 2 s
 
-// dB SPL = dBFS (normal range) + calibration. Default: a first estimate from
-// the microphone noise floor; press c to calibrate against a phone app.
+// dB SPL = dBFS (normal range) + calibration. Default: the estimate made for
+// the Cardputer ADV microphone, not measured on the StickC's SPM1423 - the
+// meter shows "uncalib." until it is calibrated against a phone app (menu).
 const float DEFAULT_CALIBRATION = 104.0f;
 
 struct Rating {
@@ -86,9 +86,9 @@ class DecibelMeterApp : public App {
 
   int help(const ui::HelpItem *&items) const override {
     static const ui::HelpItem HELP[] = {
-        {"a", "A: like the ear, Z: flat"},
-        {"Enter", "reset Leq, Max, Min"},
-        {"c", "calibrate to a phone app"},
+        {"M5", "reset Leq, Max, Min"},
+        {"menu", "A: like the ear, Z: flat"},
+        {"", "calibrate to a phone app"},
         {nullptr, "Leq: average since reset"},
         {nullptr, "Max / Min: loudest / quietest"},
         {nullptr, "LOUD: range for very loud"},
@@ -97,12 +97,25 @@ class DecibelMeterApp : public App {
     return sizeof(HELP) / sizeof(HELP[0]);
   }
 
+  int menu(const MenuItem *&items) const override {
+    static const MenuItem MENU[] = {
+        {"A / Z weighting", 'a', false},
+        {"Calibrate / cancel", 'c', false},
+        {"Calibration +5 dB", '=', true},
+        {"Calibration -5 dB", '-', true},
+    };
+    items = MENU;
+    return sizeof(MENU) / sizeof(MENU[0]);
+  }
+
   void onKey(const Key &key) override {
     if (calibrating_) {
-      if (key.ch == ';') calEdit_ += 0.5f;
-      if (key.ch == '.') calEdit_ -= 0.5f;
-      if (key.ch == '/') calEdit_ += 5;
-      if (key.ch == ',') calEdit_ -= 5;
+      if (key.ch == '/') calEdit_ += 0.5f;
+      if (key.ch == ',') calEdit_ -= 0.5f;
+      if (key.ch == '=') calEdit_ += 5;
+      if (key.ch == '-') calEdit_ -= 5;
+      if (key.ch == '=' || key.ch == '-')                 // the menu covers the number
+        ui::flashLevel("OFFSET", (int)lroundf(max(0.0f, calEdit_)), 150, "dB");
       if (key.ch == 'c') calibrating_ = false;
       if (key.enter) {
         calibration_ = calEdit_;
@@ -223,16 +236,16 @@ class DecibelMeterApp : public App {
     c.setCursor(2, 92);
     c.print("Play steady noise, measure it with a");
     c.setCursor(2, 102);
-    c.print("phone app next to the Cardputer and");
+    c.print("phone app next to the StickC and");
     c.setCursor(2, 112);
     c.printf("set the same value.   (offset %.1f)", calEdit_);
-    ui::footer(";. 0.5dB  ,/ 5dB  Enter save  c cancel");
+    ui::footer("PWR/B 0.5dB  menu 5dB  M5 save");
   }
 
   void updateRange(int peak) {
     if (!loudRange_ && peak > CLIP_PEAK) {
       loudRange_ = true;
-      es8311::setPgaGain(LOUD_GAIN);
+      audio_in::setGain(LOUD_GAIN);
       skipSamples_ = SKIP_AFTER_SWITCH;
       quietSinceMs_ = 0;
       Serial.println("range: LOUD");
@@ -241,7 +254,7 @@ class DecibelMeterApp : public App {
         if (quietSinceMs_ == 0) quietSinceMs_ = millis();
         if (millis() - quietSinceMs_ > 2000) {
           loudRange_ = false;
-          es8311::setPgaGain(NORMAL_GAIN);
+          audio_in::setGain(NORMAL_GAIN);
           skipSamples_ = SKIP_AFTER_SWITCH;
           Serial.println("range: NORMAL");
         }
@@ -256,7 +269,7 @@ class DecibelMeterApp : public App {
     lastLogMs_ = millis();
     Serial.printf("fast=%.1f slow=%.1f leq=%.1f max=%.1f dBFS  pga=%d peak=%d  rate=%.2f dropped=%u\n",
                   meter_->fastDb(), meter_->slowDb(), meter_->leqDb(), meter_->maxDb(),
-                  es8311::pgaGain(), peak, audio_in::measuredRate(),
+                  audio_in::gain(), peak, audio_in::measuredRate(),
                   (unsigned)audio_in::droppedSamples());
   }
 

@@ -1,5 +1,5 @@
 // Spectrum analyser: bars made of green, yellow and red blocks, like the
-// display of a hi-fi system. Two modes (key m, remembered):
+// display of a hi-fi system. Two modes (menu, remembered):
 //  - 16 bars from 60 Hz to 16 kHz (FFT of 2048 samples),
 //  - 26 ISO third-octave bands 50 Hz ... 16 kHz, like a professional analyser,
 //    for finding feedback or room resonances (FFT of 4096 samples: the low
@@ -11,8 +11,8 @@
 //  - automatic sensitivity (lib/dsp/auto_range): the top of the scale jumps
 //    to the loudest band and comes down slowly, so quiet music from a phone
 //    moves the bars as well as a loud stereo
-// Keys: Enter (or p) peaks on/off, , / (or r) range of the bars 20 / 30 / 40 dB
-// (remembered), m 16 bars / third octaves.
+// Buttons: M5 peaks on/off, PWR / B range of the bars 20 / 30 / 40 dB
+// (remembered); menu: 16 bars / third octaves.
 #include <algorithm>
 #include <esp_heap_caps.h>
 #include <memory>
@@ -102,15 +102,24 @@ class SpectrumApp : public App {
 
   int help(const ui::HelpItem *&items) const override {
     static const ui::HelpItem HELP[] = {
-        {"Enter", "peaks on / off"},
-        {", /", "bar range 20/30/40 dB"},
+        {"M5", "peaks on / off"},
+        {"PWR/B", "bar range 20/30/40 dB"},
         {"", "(smaller = livelier bars)"},
-        {"m", "16 bars / 1/3 octaves (26)"},
+        {"menu", "16 bars / 1/3 octaves"},
         {nullptr, "bars: 50-60 Hz (left) - 16 kHz"},
         {nullptr, "the sensitivity is automatic"},
     };
     items = HELP;
     return sizeof(HELP) / sizeof(HELP[0]);
+  }
+
+  int menu(const MenuItem *&items) const override {
+    static const MenuItem MENU[] = {
+        {"16 bars / 1/3 octaves", 'm', false},
+        {"Peaks on / off", 'p', false},
+    };
+    items = MENU;
+    return sizeof(MENU) / sizeof(MENU[0]);
   }
 
   void onKey(const Key &key) override {

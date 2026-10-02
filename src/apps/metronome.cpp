@@ -4,19 +4,18 @@
 // high priority), not by the main loop: drawing the display takes up to
 // ~15 ms, which would be audible as uneven clicks. The task sleeps until
 // ~2 ms before a beat and then waits for the exact microsecond.
-// Sound: a short decaying sine ("tick") played with the speaker; the
-// microphone is not used (it shares the I2S bus with the speaker).
-// The tempo can be taken from the BPM app (key l), which saves its last tempo.
+// Sound: a short tone on the buzzer of the M5StickC Plus (higher on the first
+// beat); the microphone is not used.
+// The tempo can be taken from the BPM app (menu), which saves its last tempo.
 //
-// Keys: Enter start/stop, , / tempo -1/+1, - = tempo -5/+5, space tap tempo,
-//       m time signature 2/4 3/4 4/4 6/8, ; . volume, l tempo from the BPM app.
-#include <M5Cardputer.h>
+// Buttons: M5 start/stop, PWR / B tempo -1/+1; menu: tempo -5/+5, tap tempo,
+//          time signature 2/4 3/4 4/4 6/8, volume, tempo from the BPM app.
+#include <M5Unified.h>
 #include <atomic>
 #include <cmath>
 #include <esp_timer.h>
 #include "apps.h"
 #include "tempo.h"
-#include "../hw/es8311.h"
 #include "../services/settings.h"
 #include "../services/ui.h"
 
@@ -25,19 +24,10 @@ namespace {
 const int MIN_BPM = 30, MAX_BPM = 250;
 const int METERS[] = {2, 3, 4, 6};         // beats per bar; 6 = 6/8 (accents on 1 and 4)
 const char *METER_NAMES[] = {"2/4", "3/4", "4/4", "6/8"};
-const int CLICK_RATE = 44100;
-const int CLICK_SAMPLES = CLICK_RATE * 25 / 1000;   // 25 ms
+const uint32_t CLICK_MS = 25;
+// the three click tones: first beat, secondary accent (6/8), other beats
+const float HZ_ACCENT = 2000, HZ_MIDDLE = 1600, HZ_BEAT = 1300;
 const uint32_t FLASH_MS = 90;
-
-// the three click sounds: first beat, secondary accent (6/8), other beats
-int16_t clickAccent[CLICK_SAMPLES], clickMiddle[CLICK_SAMPLES], clickBeat[CLICK_SAMPLES];
-
-void makeClick(int16_t *out, float hz, float level) {
-  for (int i = 0; i < CLICK_SAMPLES; i++) {
-    float t = (float)i / CLICK_RATE;
-    out[i] = (int16_t)(level * 30000 * expf(-t / 0.006f) * sinf(2 * (float)M_PI * hz * t));
-  }
-}
 
 class MetronomeApp : public App {
  public:
@@ -49,10 +39,7 @@ class MetronomeApp : public App {
     meter_ = constrain(settings::getInt("met_meter", 2), 0, 3);
     volume_ = constrain(settings::getInt("met_vol", 7), 0, 10);
     fromBpmApp_ = settings::getInt("bpm_last", 0);
-    makeClick(clickAccent, 2000, 1.0f);
-    makeClick(clickMiddle, 1600, 0.8f);
-    makeClick(clickBeat, 1300, 0.6f);
-    M5Cardputer.Speaker.begin();
+    M5.Speaker.begin();
     applyVolume();
     running_ = false;
     quit_ = false;
@@ -66,9 +53,8 @@ class MetronomeApp : public App {
     running_ = false;
     quit_ = true;
     while (!taskDone_) delay(1);                 // wait for the clock task to end
-    M5Cardputer.Speaker.stop();
-    M5Cardputer.Speaker.end();
-    es8311::speakerOff();                        // otherwise the idle amplifier hums
+    M5.Speaker.stop();
+    M5.Speaker.end();
     settings::putInt("met_bpm", bpm_);
     settings::putInt("met_meter", meter_.load());
     settings::putInt("met_vol", volume_);
@@ -78,16 +64,30 @@ class MetronomeApp : public App {
 
   int help(const ui::HelpItem *&items) const override {
     static const ui::HelpItem HELP[] = {
-        {"Enter", "start / stop"},
-        {", /", "tempo -1 / +1"},
-        {"- =", "tempo -5 / +5"},
-        {"space", "tap the tempo"},
-        {"m", "2/4  3/4  4/4  6/8"},
-        {"; .", "volume + / -"},
-        {"l", "take the tempo from BPM"},
+        {"M5", "start / stop"},
+        {"PWR/B", "tempo -1 / +1"},
+        {"menu", "tempo -5 / +5, tap tempo,"},
+        {"", "2/4 3/4 4/4 6/8, volume,"},
+        {"", "tempo from the BPM app"},
+        {nullptr, "tap: select Tap tempo, then"},
+        {nullptr, "press M5 on the beat"},
     };
     items = HELP;
     return sizeof(HELP) / sizeof(HELP[0]);
+  }
+
+  int menu(const MenuItem *&items) const override {
+    static const MenuItem MENU[] = {
+        {"Tempo +5", '=', true},
+        {"Tempo -5", '-', true},
+        {"Tap tempo (M5 on beat)", ' ', true},
+        {"Time signature", 'm', true},
+        {"Volume +", ';', true},
+        {"Volume -", '.', true},
+        {"Tempo from BPM app", 'l', false},
+    };
+    items = MENU;
+    return sizeof(MENU) / sizeof(MENU[0]);
   }
 
   void onKey(const Key &key) override {
@@ -105,6 +105,7 @@ class MetronomeApp : public App {
     if (key.ch == 'm') {
       meter_ = (meter_ + 1) % 4;
       beat_ = 0;
+      ui::flashLevel("BEATS", METERS[meter_], 6, METERS[meter_] == 6 ? "(6/8)" : "/ 4");
     }
     if (key.ch == ';' || key.ch == '.') {
       volume_ = constrain(volume_ + (key.ch == ';' ? 1 : -1), 0, 10);
@@ -158,21 +159,25 @@ class MetronomeApp : public App {
     c.setTextColor(running_ ? GREEN : WHITE);
     if (!taskOk_) {
       c.setTextColor(RED);
-      c.print("not enough memory - Esc, try again");
+      c.print("not enough memory - exit, try again");
     } else {
-      c.print(running_ ? "running - Enter: stop" : "Enter: start");
+      c.print(running_ ? "running - M5: stop" : "M5: start");
     }
     if (fromBpmApp_ > 0 && fromBpmApp_ != bpm_.load()) {
       c.setTextColor(YELLOW);
       c.setCursor(10, 113);
-      c.printf("l: take %d BPM from the BPM app", fromBpmApp_);
+      c.printf("menu: take %d BPM from the BPM app", fromBpmApp_);
     }
     ui::footerHelp();
   }
 
  private:
-  void setBpm(int bpm) { bpm_ = constrain(bpm, MIN_BPM, MAX_BPM); }
-  void applyVolume() { M5Cardputer.Speaker.setVolume(volume_ * 25); }
+  // the value is flashed: the menu may cover the tempo
+  void setBpm(int bpm) {
+    bpm_ = constrain(bpm, MIN_BPM, MAX_BPM);
+    ui::flashLevel("TEMPO", bpm_, MAX_BPM, "BPM");
+  }
+  void applyVolume() { M5.Speaker.setVolume(volume_ * 25); }
 
   static void clockTask(void *arg) {
     static_cast<MetronomeApp *>(arg)->clock();
@@ -204,8 +209,8 @@ class MetronomeApp : public App {
   }
 
   void click(int beat) {
-    const int16_t *sound = beat == 0 ? clickAccent : (METERS[meter_] == 6 && beat == 3) ? clickMiddle : clickBeat;
-    M5Cardputer.Speaker.playRaw(sound, CLICK_SAMPLES, CLICK_RATE, false, 1, 0, true);
+    float hz = beat == 0 ? HZ_ACCENT : (METERS[meter_] == 6 && beat == 3) ? HZ_MIDDLE : HZ_BEAT;
+    M5.Speaker.tone(hz, CLICK_MS, 0, true);
   }
 
   // shared with the clock task on the other core

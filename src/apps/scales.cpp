@@ -3,8 +3,9 @@
 // the "blue note" (b5) of the blues scale light blue. Small dots without note
 // names: 13 columns of labelled dots were too busy on the small display.
 //
-// Keys: a...g the key (# or b right after the letter: sharp / flat; b alone is
-// the note B), , / the scale, ; . frets 0-12 / 12-24. No microphone.
+// Buttons: M5 moves between the fields KEY -> SCALE -> FRETS (the field being
+// changed is yellow), PWR / B change it: the key (C C# D Eb ... B), the scale,
+// frets 0-12 / 12-24. No microphone.
 #include <cstring>
 #include "apps.h"
 #include "theory.h"
@@ -22,8 +23,12 @@ const int STRING_GAP = 14;
 const int DOT_RADIUS = 4;
 const char *STRING_LABELS = "EADGBe";
 const int MARKED_FRETS[] = {3, 5, 7, 9, 12, 15, 17, 19, 21, 24};
-const char *LETTERS = "cdefgab";
-const int LETTER_PITCH[] = {0, 2, 4, 5, 7, 9, 11};
+// the 12 keys, spelled as they are usually written: {letter (0 = C), pitch}
+const dsp::SpelledNote KEYS[12] = {{0, 0}, {0, 1}, {1, 2}, {2, 3}, {2, 4}, {3, 5},
+                                   {3, 6}, {4, 7}, {5, 8}, {5, 9}, {6, 10}, {6, 11}};
+
+enum Field { KEY, SCALE, FRETS, FIELDS };
+const char *FIELD_NAMES[FIELDS] = {"KEY", "SCALE", "FRETS"};
 
 class ScalesApp : public App {
  public:
@@ -32,10 +37,10 @@ class ScalesApp : public App {
 
   void enter() override {
     int root = settings::getInt("sc_root", 5 * 100 + 9);   // letter * 100 + pitch: A
-    root_ = {root / 100 % 7, root % 100 % 12};
+    root_ = KEYS[root % 100 % 12];                       // KEYS[i].pitch == i
     type_ = constrain(settings::getInt("sc_type", 0), 0, dsp::SCALE_TYPE_COUNT - 1);
     firstFret_ = 0;
-    accidentalAllowed_ = false;
+    field_ = KEY;
     update();
   }
 
@@ -48,9 +53,9 @@ class ScalesApp : public App {
 
   int help(const ui::HelpItem *&items) const override {
     static const ui::HelpItem HELP[] = {
-        {"a...g", "the key (then # or b)"},
-        {", /", "previous / next scale"},
-        {"; .", "frets 0-12 / 12-24"},
+        {"M5", "next field: key, scale,"},
+        {"", "frets (yellow = active)"},
+        {"PWR/B", "change the active field"},
         {nullptr, "orange = root (1)"},
         {nullptr, "blue = blue note (blues)"},
     };
@@ -59,41 +64,28 @@ class ScalesApp : public App {
   }
 
   void onKey(const Key &key) override {
-    char ch = key.ch;
-    if ((ch == '#' || ch == 'b') && accidentalAllowed_) {
-      root_.pitch = (root_.pitch + (ch == '#' ? 1 : 11)) % 12;
-      accidentalAllowed_ = false;
-      update();
-      return;
-    }
-    const char *letter = ch ? strchr(LETTERS, ch) : nullptr;
-    if (letter) {
-      int index = letter - LETTERS;
-      // LETTERS starts with C, the spelled-note letters too (0 = C ... 6 = B)
-      root_ = {index, LETTER_PITCH[index]};
-      accidentalAllowed_ = true;
-      update();
-      return;
-    }
-    accidentalAllowed_ = false;
-    if (ch == ',') type_ = (type_ + dsp::SCALE_TYPE_COUNT - 1) % dsp::SCALE_TYPE_COUNT;
-    if (ch == '/') type_ = (type_ + 1) % dsp::SCALE_TYPE_COUNT;
-    if (ch == ';') firstFret_ = 0;
-    if (ch == '.') firstFret_ = 12;
+    if (key.enter) field_ = (field_ + 1) % FIELDS;
+    int step = key.ch == '/' ? 1 : key.ch == ',' ? -1 : 0;
+    if (!step) return;
+    if (field_ == KEY) root_ = KEYS[(root_.pitch + 12 + step) % 12];
+    if (field_ == SCALE) type_ = (type_ + dsp::SCALE_TYPE_COUNT + step) % dsp::SCALE_TYPE_COUNT;
+    if (field_ == FRETS) firstFret_ = firstFret_ ? 0 : 12;
     update();
   }
 
   void draw(M5Canvas &c) override {
-    ui::header("Scales", firstFret_ ? "frets 12-24" : "frets 0-12");
+    char right[24];
+    snprintf(right, sizeof(right), "%s  %s", FIELD_NAMES[field_], firstFret_ ? "frets 12-24" : "frets 0-12");
+    ui::header("Scales", right);
 
-    // "A minor pentatonic"
+    // "A minor pentatonic", the field being changed in yellow
     char root[6];
     dsp::noteName(root_, root);
     c.setTextSize(2);
-    c.setTextColor(ORANGE);
+    c.setTextColor(field_ == KEY ? YELLOW : ORANGE);
     c.setCursor(4, 16);
     c.print(root);
-    c.setTextColor(WHITE);
+    c.setTextColor(field_ == SCALE ? YELLOW : WHITE);
     c.print(" ");
     c.print(dsp::SCALE_TYPES[type_].name);
 
@@ -128,7 +120,7 @@ class ScalesApp : public App {
     else c.drawFastVLine(NUT_X, top, height, LIGHTGREY);
 
     // numbers of the marked frets (3, 5, 7, 9, 12...) under the strings
-    c.setTextColor(WHITE);
+    c.setTextColor(field_ == FRETS ? YELLOW : WHITE);
     for (int fret : MARKED_FRETS) {
       int column = fret - firstFret_;
       if (column < 0 || column > FRETS_SHOWN) continue;
@@ -157,8 +149,7 @@ class ScalesApp : public App {
   }
 
   dsp::SpelledNote root_ = {5, 9};
-  int type_ = 0, firstFret_ = 0;
-  bool accidentalAllowed_ = false;
+  int type_ = 0, firstFret_ = 0, field_ = KEY;
   dsp::ChordTone notes_[7];
   int noteCount_ = 0;
 };
